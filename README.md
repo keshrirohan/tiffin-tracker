@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🍱 Tiffin Tracker
 
-## Getting Started
+A production-ready PWA to track daily tiffin (lunch/dinner) meals, calculate bills, and manage payments.
 
-First, run the development server:
+## Features
+
+- ✅ Mark lunch / dinner as Received or Not Received each day
+- 💰 Automatic bill calculation (price per meal × received meals)
+- 💳 Payment tracking with remaining balance
+- 📋 Full meal history with filters
+- 📊 Monthly bill view
+- 📤 Export bill to CSV anytime
+- 🔔 Configurable lunch/dinner reminders
+- 📱 Installable PWA (works on Android like a native app)
+- 🌐 Offline-friendly shell
+
+## Tech Stack
+
+- Next.js 14 (App Router)
+- TypeScript
+- Tailwind CSS
+- MongoDB Atlas + Mongoose
+- next-pwa (service worker, installability)
+
+## Setup
+
+### 1. Clone / open the project
+
+```bash
+cd "d:\food count app\tiffin-tracker"
+npm install
+```
+
+### 2. Environment variables
+
+Copy `.env.example` to `.env.local` and fill in your MongoDB Atlas URI:
+
+```
+MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/tiffin-tracker?retryWrites=true&w=majority
+```
+
+### 3. MongoDB Atlas
+
+1. Create a free cluster at https://cloud.mongodb.com
+2. Create a database user
+3. Whitelist your IP (or use 0.0.0.0/0 for all)
+4. Copy the connection string into `.env.local`
+
+### 4. Run locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 5. Production build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm run start
+```
 
-## Learn More
+## Testing
 
-To learn more about Next.js, take a look at the following resources:
+TypeScript check:
+```bash
+npx tsc --noEmit
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Lint:
+```bash
+npx eslint "src/**/*.ts" "src/**/*.tsx"
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## PWA Installation (Android)
 
-## Deploy on Vercel
+1. Open the app in Chrome
+2. Tap the browser menu → "Add to Home Screen"
+3. The app installs and runs in standalone mode
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Notifications
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Go to Settings → enable Lunch/Dinner reminders
+- Set your preferred time
+- Allow notification permission when prompted
+- Reminders fire once daily at the configured time
+
+## Deployment
+
+Deploy to Vercel (recommended):
+```bash
+npm i -g vercel
+vercel
+```
+
+Set `MONGODB_URI` in Vercel environment variables.
