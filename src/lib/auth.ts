@@ -5,6 +5,13 @@ import bcrypt from "bcryptjs";
 import { connectToDatabase } from "./mongodb";
 import User from "@/models/User";
 
+// Auto-detect URL: use NEXTAUTH_URL if set, else use Vercel's auto-provided URL
+const getBaseUrl = () => {
+  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+};
+
 export const authOptions: NextAuthOptions = {
   providers: [
     // ── Google OAuth ──────────────────────────────────────────────────────
@@ -101,6 +108,11 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
     error: "/login",
   },
+
+  // NEXTAUTH_URL auto-resolved — supports localhost + Vercel deployment
+  ...(process.env.NEXTAUTH_URL || process.env.VERCEL_URL
+    ? { url: getBaseUrl() }
+    : {}),
 
   session: {
     strategy: "jwt",
