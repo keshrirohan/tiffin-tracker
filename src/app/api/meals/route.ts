@@ -5,6 +5,16 @@ import Meal from "@/models/Meal";
 import Settings from "@/models/Settings";
 import { getErrorMessage } from "@/lib/utils";
 
+/** Drop the old index created before multi-user support was added. Safe no-op if gone. */
+async function dropLegacyIndex() {
+  try {
+    await Meal.collection.dropIndex("date_1_mealType_1");
+    console.log("[migration] Dropped legacy index date_1_mealType_1");
+  } catch {
+    // Already dropped or never existed — that's fine
+  }
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if (auth.error) return auth.error;
@@ -56,6 +66,10 @@ export async function POST(req: NextRequest) {
 
   try {
     await connectToDatabase();
+
+    // One-time migration: remove old unique index that didn't include userId
+    await dropLegacyIndex();
+
     const body = await req.json();
     const { date, mealType, status } = body;
 
@@ -78,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     const meal = await Meal.findOneAndUpdate(
       { userId, date, mealType },
-      { status, price: mealPrice },
+      { $set: { status, price: mealPrice } },
       { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }
     ).lean();
 
