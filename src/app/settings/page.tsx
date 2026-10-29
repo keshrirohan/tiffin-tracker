@@ -6,10 +6,61 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import ErrorMessage from "@/components/ErrorMessage";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import ExportButton from "@/components/ExportButton";
+import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/components/ThemeProvider";
 import { ISettings } from "@/types";
 
 type NotifPermission = "default" | "granted" | "denied" | "unsupported";
+
+/** Subscribe this device to Web Push and store on server */
+async function subscribeToPush(): Promise<boolean> {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing ?? await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(
+        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""
+      ),
+    });
+    await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+    return true;
+  } catch (e) {
+    console.error("Push subscribe error:", e);
+    return false;
+  }
+}
+
+/** Unsubscribe this device from Web Push */
+async function unsubscribeFromPush(): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch("/api/push/subscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    }
+  } catch (e) {
+    console.error("Push unsubscribe error:", e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const arr = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) arr[i] = rawData.charCodeAt(i);
+  return arr.buffer;
+}
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -61,6 +112,9 @@ export default function SettingsPage() {
     if (!("Notification" in window)) { setNotifPermission("unsupported"); return; }
     const result = await Notification.requestPermission();
     setNotifPermission(result as NotifPermission);
+    if (result === "granted" && "serviceWorker" in navigator) {
+      await subscribeToPush();
+    }
   };
 
   const handleSave = async () => {
@@ -74,7 +128,16 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to save settings.");
-      if (notifPermission === "granted") scheduleNotifications(lunchEnabled, lunchTime, dinnerEnabled, dinnerTime);
+
+      // Handle push subscription based on whether any reminder is enabled
+      if ("serviceWorker" in navigator && notifPermission === "granted") {
+        if (lunchEnabled || dinnerEnabled) {
+          await subscribeToPush();
+        } else {
+          await unsubscribeFromPush();
+        }
+      }
+
       setSuccess("Settings saved!");
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
@@ -100,43 +163,18 @@ export default function SettingsPage() {
     }
   };
 
-  const scheduleNotifications = (le: boolean, lt: string, de: boolean, dt: string) => {
-    const now = new Date();
-    const notify = (enabled: boolean, timeStr: string, label: string) => {
-      if (!enabled) return;
-      const [h, m] = timeStr.split(":").map(Number);
-      const t = new Date(); t.setHours(h, m, 0, 0);
-      const ms = t.getTime() - now.getTime();
-      if (ms > 0 && ms < 86400000) {
-        setTimeout(() => {
-          if (Notification.permission === "granted") new Notification(`${label} reminder 🍱`, { body: `Did your ${label.toLowerCase()} arrive today?`, icon: "/icons/icon-192x192.png" });
-        }, ms);
-      }
-    };
-    notify(le, lt, "Lunch");
-    notify(de, dt, "Dinner");
-  };
-
   const notifText: Record<NotifPermission, string> = {
     default: "Not yet asked",
-    granted: "✅ Allowed",
+    granted: "✅ Allowed — background push enabled",
     denied: "❌ Blocked — enable in browser settings",
     unsupported: "⚠️ Not supported on this device",
   };
-
-  const Toggle = ({ on, onToggle, color = "orange" }: { on: boolean; onToggle: () => void; color?: string }) => (
-    <button onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${on ? (color === "indigo" ? "bg-indigo-500" : "bg-orange-500") : "bg-gray-200 dark:bg-gray-600"}`}
-      role="switch" aria-checked={on}>
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
-    </button>
-  );
 
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="px-4 py-6 space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
+      <h1 className="text-2xl font-bold text-foreground">Settings</h1>
 
       {error && <ErrorMessage message={error} />}
       {success && (
@@ -147,114 +185,117 @@ export default function SettingsPage() {
 
       {/* Account */}
       {session?.user && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4">
-          <h2 className="text-base font-bold text-gray-800 dark:text-white mb-3">👤 Account</h2>
+        <div className="bg-card rounded-2xl border border-border p-4">
+          <h2 className="text-base font-bold text-foreground mb-3">👤 Account</h2>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
               <span className="text-white font-bold">{session.user.name?.[0]?.toUpperCase()}</span>
             </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-white">{session.user.name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{session.user.email}</p>
+              <p className="font-semibold text-foreground">{session.user.name}</p>
+              <p className="text-xs text-muted-foreground">{session.user.email}</p>
             </div>
           </div>
           <button onClick={() => signOut({ callbackUrl: "/login" })}
-            className="mt-3 w-full py-2.5 border-2 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-xl text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+            className="mt-3 w-full py-2.5 border-2 border-destructive/30 text-destructive rounded-xl text-sm font-semibold hover:bg-destructive/5 transition-colors">
             Sign Out
           </button>
         </div>
       )}
 
       {/* Theme */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4">
-        <h2 className="text-base font-bold text-gray-800 dark:text-white mb-3">🎨 Appearance</h2>
+      <div className="bg-card rounded-2xl border border-border p-4">
+        <h2 className="text-base font-bold text-foreground mb-3">🎨 Appearance</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Dark Mode</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500">Currently {theme === "dark" ? "on" : "off"}</p>
+            <p className="text-sm font-medium text-foreground">Dark Mode</p>
+            <p className="text-xs text-muted-foreground">Currently {theme === "dark" ? "on" : "off"}</p>
           </div>
-          <Toggle on={theme === "dark"} onToggle={toggleTheme} />
+          <Switch checked={theme === "dark"} onCheckedChange={toggleTheme} />
         </div>
       </div>
 
       {/* Meal Price */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4">
-        <h2 className="text-base font-bold text-gray-800 dark:text-white mb-3">💰 Meal Price</h2>
+      <div className="bg-card rounded-2xl border border-border p-4">
+        <h2 className="text-base font-bold text-foreground mb-3">💰 Meal Price</h2>
         <div className="flex items-center gap-2">
-          <span className="text-xl font-bold text-gray-700 dark:text-gray-200">₹</span>
+          <span className="text-xl font-bold text-foreground">₹</span>
           <input type="number" value={mealPrice} onChange={(e) => setMealPrice(e.target.value)} min="1"
-            className="flex-1 rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-lg font-bold bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white" />
+            className="flex-1 rounded-xl border border-border p-3 text-lg font-bold bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Price per meal. Existing records keep their original price.</p>
+        <p className="text-xs text-muted-foreground mt-2">Price per meal. Existing records keep their original price.</p>
       </div>
 
       {/* Notifications */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 space-y-4">
-        <h2 className="text-base font-bold text-gray-800 dark:text-white">🔔 Reminders</h2>
+      <div className="bg-card rounded-2xl border border-border p-4 space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-foreground">🔔 Reminders</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Sends a push notification even when the app is closed.</p>
+        </div>
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Permission</p>
-          <span className={`text-sm font-medium ${notifPermission === "granted" ? "text-green-600 dark:text-green-400" : "text-gray-500 dark:text-gray-400"}`}>
+          <p className="text-sm text-muted-foreground">Permission</p>
+          <span className={`text-sm font-medium ${notifPermission === "granted" ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
             {notifText[notifPermission]}
           </span>
         </div>
         {notifPermission === "default" && (
           <button onClick={requestNotifPermission}
-            className="w-full py-3 bg-orange-500 text-white rounded-xl font-semibold text-sm">
-            Enable Notifications
+            className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-orange-600 transition-colors">
+            Enable Push Notifications
           </button>
         )}
         {/* Lunch */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">🍱 Lunch Reminder</p>
-            <Toggle on={lunchEnabled} onToggle={() => setLunchEnabled(!lunchEnabled)} />
+            <p className="text-sm font-semibold text-foreground">🍱 Lunch Reminder</p>
+            <Switch checked={lunchEnabled} onCheckedChange={setLunchEnabled} />
           </div>
           {lunchEnabled && (
             <input type="time" value={lunchTime} onChange={(e) => setLunchTime(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 dark:border-gray-600 p-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white" />
+              className="w-full rounded-xl border border-border p-2 text-sm bg-muted text-foreground" />
           )}
         </div>
         {/* Dinner */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">🌙 Dinner Reminder</p>
-            <Toggle on={dinnerEnabled} onToggle={() => setDinnerEnabled(!dinnerEnabled)} color="indigo" />
+            <p className="text-sm font-semibold text-foreground">🌙 Dinner Reminder</p>
+            <Switch checked={dinnerEnabled} onCheckedChange={setDinnerEnabled} />
           </div>
           {dinnerEnabled && (
             <input type="time" value={dinnerTime} onChange={(e) => setDinnerTime(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 dark:border-gray-600 p-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white" />
+              className="w-full rounded-xl border border-border p-2 text-sm bg-muted text-foreground" />
           )}
         </div>
         {notifPermission !== "granted" && (lunchEnabled || dinnerEnabled) && (
           <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">
-            ⚠️ Allow notifications first to receive reminders.
+            ⚠️ Allow notifications first to receive background reminders.
           </p>
         )}
       </div>
 
       <button onClick={handleSave} disabled={saving}
-        className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-bold text-base disabled:opacity-60 transition-colors">
+        className="w-full py-4 bg-primary hover:bg-orange-600 text-primary-foreground rounded-2xl font-bold text-base disabled:opacity-60 transition-colors">
         {saving ? "Saving..." : "Save Settings"}
       </button>
 
       {/* Export */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4">
-        <h2 className="text-base font-bold text-gray-800 dark:text-white mb-3">📤 Export Data</h2>
+      <div className="bg-card rounded-2xl border border-border p-4">
+        <h2 className="text-base font-bold text-foreground mb-3">📤 Export Data</h2>
         <ExportButton />
       </div>
 
       {/* Danger Zone */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-red-100 dark:border-red-900/40 p-4">
-        <h2 className="text-base font-bold text-red-700 dark:text-red-400 mb-2">⚠️ Danger Zone</h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Permanently delete all meal records and payment history.</p>
+      <div className="bg-card rounded-2xl border border-destructive/20 p-4">
+        <h2 className="text-base font-bold text-destructive mb-2">⚠️ Danger Zone</h2>
+        <p className="text-xs text-muted-foreground mb-3">Permanently delete all meal records and payment history.</p>
         <button onClick={() => setShowClearConfirm(true)}
-          className="w-full py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-sm">
+          className="w-full py-3 bg-destructive hover:bg-red-600 text-white rounded-xl font-semibold text-sm transition-colors">
           Clear All Data
         </button>
       </div>
 
       <div className="text-center pb-4">
-        <p className="text-xs text-gray-400 dark:text-gray-500">Tiffin Tracker v1.0 {settings && `• Meal price: ₹${settings.mealPrice}`}</p>
+        <p className="text-xs text-muted-foreground">Tiffin Tracker v1.0 {settings && `• Meal price: ₹${settings.mealPrice}`}</p>
       </div>
 
       <ConfirmDialog isOpen={showClearConfirm} title="Clear All Data"

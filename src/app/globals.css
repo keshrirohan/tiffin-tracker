@@ -2,38 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #f9fafb;
-  --foreground: #111827;
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 24 96% 53%;
+    --primary: 24 96% 53%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 24 96% 53%;
+    --primary: 24 96% 53%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 18%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+  }
 }
 
-html.dark {
-  --background: #0f172a;
-  --foreground: #f1f5f9;
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  html { scroll-behavior: smooth; }
+  button { min-height: 44px; }
+  * { -webkit-tap-highlight-color: transparent; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  .dark ::-webkit-scrollbar-track { background: #1e293b; }
+  .dark ::-webkit-scrollbar-thumb { background: #475569; }
 }
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.2s, color 0.2s;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
-button {
-  min-height: 44px;
-}
-
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
-.dark ::-webkit-scrollbar-track { background: #1e293b; }
-.dark ::-webkit-scrollbar-thumb { background: #475569; }

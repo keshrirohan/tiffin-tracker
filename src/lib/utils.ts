@@ -1,4 +1,12 @@
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+/** shadcn/ui class helper */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
 
 /**
  * Returns today's date as YYYY-MM-DD string in local timezone.

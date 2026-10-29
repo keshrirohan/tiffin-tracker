@@ -13,5 +13,6 @@ export const config = {
     "/api/settings/:path*",
     "/api/export/:path*",
     "/api/clear-data/:path*",
+    "/api/push/:path*",
   ],
 };
