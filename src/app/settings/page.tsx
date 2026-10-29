@@ -8,59 +8,10 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import ExportButton from "@/components/ExportButton";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/components/ThemeProvider";
+import { registerFCMToken } from "@/lib/useFCMToken";
 import { ISettings } from "@/types";
 
 type NotifPermission = "default" | "granted" | "denied" | "unsupported";
-
-/** Subscribe this device to Web Push and store on server */
-async function subscribeToPush(): Promise<boolean> {
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-    const sub = existing ?? await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(
-        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""
-      ),
-    });
-    await fetch("/api/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
-    });
-    return true;
-  } catch (e) {
-    console.error("Push subscribe error:", e);
-    return false;
-  }
-}
-
-/** Unsubscribe this device from Web Push */
-async function unsubscribeFromPush(): Promise<void> {
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (sub) {
-      await fetch("/api/push/subscribe", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: sub.endpoint }),
-      });
-      await sub.unsubscribe();
-    }
-  } catch (e) {
-    console.error("Push unsubscribe error:", e);
-  }
-}
-
-function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const arr = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) arr[i] = rawData.charCodeAt(i);
-  return arr.buffer;
-}
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -110,10 +61,16 @@ export default function SettingsPage() {
 
   const requestNotifPermission = async () => {
     if (!("Notification" in window)) { setNotifPermission("unsupported"); return; }
-    const result = await Notification.requestPermission();
-    setNotifPermission(result as NotifPermission);
-    if (result === "granted" && "serviceWorker" in navigator) {
-      await subscribeToPush();
+    console.log("[FCM] Requesting notification permission from Settings...");
+    const token = await registerFCMToken();
+    const perm = Notification.permission as NotifPermission;
+    setNotifPermission(perm);
+    if (token) {
+      console.log("[FCM] ✅ FCM token registered from Settings");
+      setSuccess("Notifications enabled!");
+      setTimeout(() => setSuccess(""), 3000);
+    } else {
+      console.warn("[FCM] FCM registration returned null — check console for details");
     }
   };
 
@@ -129,13 +86,9 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to save settings.");
 
-      // Handle push subscription based on whether any reminder is enabled
-      if ("serviceWorker" in navigator && notifPermission === "granted") {
-        if (lunchEnabled || dinnerEnabled) {
-          await subscribeToPush();
-        } else {
-          await unsubscribeFromPush();
-        }
+      // Re-register FCM if reminders are enabled
+      if ((lunchEnabled || dinnerEnabled) && notifPermission === "granted") {
+        await registerFCMToken();
       }
 
       setSuccess("Settings saved!");
