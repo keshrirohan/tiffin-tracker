@@ -7,7 +7,6 @@ import User from "@/models/User";
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // ── Google OAuth ──────────────────────────────────────────────────────
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
@@ -20,7 +19,6 @@ export const authOptions: NextAuthOptions = {
       },
     }),
 
-    // ── Email / Password ──────────────────────────────────────────────────
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -38,51 +36,53 @@ export const authOptions: NextAuthOptions = {
         if (!user) throw new Error("No account found with this email.");
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) throw new Error("Incorrect password.");
-        return { id: user._id.toString(), email: user.email, name: user.name };
+        return {
+          id: user._id.toString(),
+          email: user.email,
+          name: user.name,
+        };
       },
     }),
   ],
 
   callbacks: {
-    // Called when a user signs in via Google — auto-create account if needed
+    /**
+     * signIn: For Google, upsert the user in MongoDB.
+     * Store the MongoDB _id on the user object so jwt callback can use it
+     * without needing a second DB lookup.
+     */
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
           await connectToDatabase();
-          const existing = await User.findOne({ email: user.email!.toLowerCase() });
-          if (!existing) {
-            await User.create({
+          let dbUser = await User.findOne({ email: user.email!.toLowerCase() });
+          if (!dbUser) {
+            dbUser = await User.create({
               name: user.name ?? "Google User",
               email: user.email!.toLowerCase(),
-              // Google users have no password — store empty hash
               password: await bcrypt.hash(Math.random().toString(36), 10),
             });
           }
+          // Attach MongoDB _id directly to the user object so jwt can read it
+          user.id = dbUser._id.toString();
           return true;
-        } catch {
+        } catch (err) {
+          console.error("Google signIn error:", err);
           return false;
         }
       }
       return true;
     },
 
-    async jwt({ token, user, account }) {
+    /**
+     * jwt: user.id is already the MongoDB _id (set in signIn for Google,
+     * returned from authorize for credentials). Just copy it to the token.
+     */
+    async jwt({ token, user }) {
       if (user) {
-        // On first sign-in: fetch the DB user to get the MongoDB _id
-        try {
-          await connectToDatabase();
-          const dbUser = await User.findOne({ email: user.email!.toLowerCase() });
-          if (dbUser) {
-            token.id = dbUser._id.toString();
-          } else {
-            token.id = user.id;
-          }
-        } catch {
-          token.id = user.id;
-        }
+        token.id = user.id;          // MongoDB _id
         token.name = user.name;
         token.email = user.email;
-        token.provider = account?.provider;
       }
       return token;
     },
@@ -104,22 +104,12 @@ export const authOptions: NextAuthOptions = {
 
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,   // 30 days — no repeated logins
-    updateAge: 24 * 60 * 60,      // refresh token every 24 h silently
+    maxAge: 30 * 24 * 60 * 60,  // 30 days
+    updateAge: 24 * 60 * 60,
   },
 
-  cookies: {
-    sessionToken: {
-      name: "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-      },
-    },
-  },
+  // Do NOT override cookie names — let NextAuth auto-apply __Secure- prefix on HTTPS
+  // Custom cookie config was preventing the secure cookie from being set in production
 
   secret: process.env.NEXTAUTH_SECRET,
 };
