@@ -4,6 +4,7 @@ import BottomNav from "@/components/BottomNav";
 import SessionWrapper from "@/components/SessionWrapper";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
+import FCMProvider from "@/components/FCMProvider";
 
 export const metadata: Metadata = {
   title: "Tiffin Tracker",
@@ -70,6 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </main>
             <BottomNav />
             <PWAInstallBanner />
+            <FCMProvider />
           </ThemeProvider>
         </SessionWrapper>
         <script
