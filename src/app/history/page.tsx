@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ErrorMessage from "@/components/ErrorMessage";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { IMeal, MealStatus } from "@/types";
-import { formatDateShort, formatCurrency } from "@/lib/utils";
+import { IMeal, MealStatus, MealType } from "@/types";
+import { formatDateShort, formatCurrency, getTodayDateString } from "@/lib/utils";
 
 type FilterType = "all" | "lunch" | "dinner" | "received" | "not_received";
 interface GroupedMeals { date: string; meals: IMeal[]; }
@@ -19,6 +19,14 @@ export default function HistoryPage() {
   const [editingMeal, setEditingMeal] = useState<IMeal | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // ── Add Meal state ──────────────────────────────────────────────────────
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addDate, setAddDate] = useState(getTodayDateString());
+  const [addMealType, setAddMealType] = useState<MealType>("lunch");
+  const [addStatus, setAddStatus] = useState<MealStatus>("received");
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState("");
 
   const fetchMeals = useCallback(async () => {
     setError("");
@@ -73,6 +81,30 @@ export default function HistoryPage() {
     }
   };
 
+  const handleAddMeal = async () => {
+    setAddError("");
+    if (!addDate) { setAddError("Please select a date."); return; }
+    setAddLoading(true);
+    try {
+      const res = await fetch("/api/meals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: addDate, mealType: addMealType, status: addStatus }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to add meal.");
+      setShowAddModal(false);
+      setAddDate(getTodayDateString());
+      setAddMealType("lunch");
+      setAddStatus("received");
+      await fetchMeals();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Failed to add meal.");
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
   // Group by date
   const grouped: GroupedMeals[] = [];
   const dateMap = new Map<string, IMeal[]>();
@@ -105,9 +137,24 @@ export default function HistoryPage() {
 
   return (
     <div className="px-4 py-6 space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meal History</h1>
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meal History</h1>
+        <button
+          onClick={() => { setShowAddModal(true); setAddError(""); setAddDate(getTodayDateString()); }}
+          className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Meal
+        </button>
+      </div>
+
       {error && <ErrorMessage message={error} onRetry={fetchMeals} />}
 
+      {/* Filters */}
       <div className="space-y-2">
         <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}
           className="w-full rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
@@ -123,11 +170,14 @@ export default function HistoryPage() {
         </div>
       </div>
 
+      {/* Meal List */}
       {loading ? <LoadingSpinner /> : grouped.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-4xl mb-3">📋</p>
           <p className="text-gray-500 dark:text-gray-400">No meal records found.</p>
-          <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Start recording meals from the Dashboard.</p>
+          <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
+            Tap <strong>Add Meal</strong> to record a meal for any date.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -172,6 +222,96 @@ export default function HistoryPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Add Meal Modal ──────────────────────────────────────────────── */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
+          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowAddModal(false)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Add Meal for a Date</h3>
+
+            <div className="space-y-4">
+              {/* Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={addDate}
+                  onChange={(e) => setAddDate(e.target.value)}
+                  max={getTodayDateString()}
+                  className="w-full rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-base bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              {/* Meal Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Meal Type
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAddMealType("lunch")}
+                    className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${addMealType === "lunch" ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+                  >
+                    🍱 Lunch
+                  </button>
+                  <button
+                    onClick={() => setAddMealType("dinner")}
+                    className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${addMealType === "dinner" ? "bg-indigo-500 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+                  >
+                    🌙 Dinner
+                  </button>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Status
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAddStatus("received")}
+                    className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${addStatus === "received" ? "bg-green-500 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+                  >
+                    ✅ Received
+                  </button>
+                  <button
+                    onClick={() => setAddStatus("not_received")}
+                    className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${addStatus === "not_received" ? "bg-gray-500 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+                  >
+                    ❌ Not Received
+                  </button>
+                </div>
+              </div>
+
+              {addError && (
+                <p className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2">
+                  ⚠️ {addError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddMeal}
+                disabled={addLoading}
+                className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm disabled:opacity-60 transition-colors"
+              >
+                {addLoading ? "Saving..." : "Save Meal"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
