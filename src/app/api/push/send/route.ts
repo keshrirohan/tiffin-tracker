@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 }
 
 // GET — send scheduled reminders for this user (called by Vercel cron or settings trigger)
-export async function GET(req: NextRequest) {
+export async function GET() {
   const auth = await requireAuth();
   if (auth.error) return auth.error;
   const { userId } = auth;

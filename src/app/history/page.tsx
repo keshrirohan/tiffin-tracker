@@ -13,8 +13,6 @@ import { Plus } from "lucide-react";
 type FilterType = "all" | "lunch" | "dinner" | "received" | "not_received";
 interface GroupedMeals { date: string; meals: IMeal[]; }
 
-type SlotStatus = MealStatus | "skip";
-
 interface MealSlot {
   included: boolean;
   status: MealStatus;

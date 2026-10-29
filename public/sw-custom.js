@@ -1,5 +1,5 @@
-// Custom service worker additions for Web Push notifications
-// next-pwa merges this with the auto-generated Workbox SW via customWorkerSrc
+// Custom push notification handler — imported by the Workbox service worker
+// This file must live in /public so it's served at /sw-custom.js
 
 self.addEventListener("push", (event) => {
   if (!event.data) return;
